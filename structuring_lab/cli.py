@@ -6,6 +6,7 @@ from statistics import mean
 
 from structuring_lab.backtest import rolling_dci_backtest_by_year
 from structuring_lab.binance import PublicBinanceFuturesClient
+from structuring_lab.macro import fetch_fred_series
 from structuring_lab.pricing import black_scholes_price, fair_apr_from_option_premium
 from structuring_lab.products import DualCurrencyInvestment
 from structuring_lab.risk import (
@@ -16,6 +17,7 @@ from structuring_lab.risk import (
     summarize_funding_rates,
     summarize_values,
 )
+from structuring_lab.stress import build_stress_days, summarize_stress_by_year
 
 
 def _pct(value: float, decimals: int = 2) -> str:
@@ -253,6 +255,60 @@ def run_dci_tenors(args: argparse.Namespace) -> None:
             )
 
 
+def run_stress(args: argparse.Namespace) -> None:
+    client = PublicBinanceFuturesClient()
+    rows = client.klines_range(
+        args.symbol,
+        start=_utc_date(args.start_year),
+        end=_utc_date(args.end_year + 1),
+        interval="1d",
+    )
+    t_bill = fetch_fred_series(args.t_bill_series)
+    fed_funds = fetch_fred_series(args.policy_series)
+    days = build_stress_days(
+        rows,
+        t_bill_3m=t_bill,
+        fed_funds=fed_funds,
+        rolling_window=args.window,
+        stress_percentile=args.stress_percentile,
+    )
+    summaries = summarize_stress_by_year(days, args.start_year, args.end_year)
+
+    print("Crypto Derivatives Structuring Lab")
+    print("----------------------------------")
+    print(f"Data source: Binance USD-M Futures daily klines {args.symbol}")
+    print(f"Macro source: FRED {args.t_bill_series}, {args.policy_series}")
+    print(f"Stress window: {args.window} days")
+    print(f"Liquidity-constrained threshold: top {100 - args.stress_percentile:.0f}% stress-score days")
+    print("")
+    header = (
+        "Year  Obs  BTC return  MDD       Stress days  Stress ratio  "
+        "Stress MDD  Vol      Range    Illiq      3M Bill  FedFunds  Max 3M"
+    )
+    print(header)
+    print("-" * len(header))
+    for summary in summaries:
+        stress_mdd = "n/a" if summary.liquidity_period_mdd is None else _pct(summary.liquidity_period_mdd)
+        t_bill = "n/a" if summary.average_t_bill_3m is None else _pct(summary.average_t_bill_3m)
+        fed_rate = "n/a" if summary.average_fed_funds is None else _pct(summary.average_fed_funds)
+        max_bill = "n/a" if summary.max_t_bill_3m is None else _pct(summary.max_t_bill_3m)
+        print(
+            f"{summary.year:<5} "
+            f"{summary.observations:>3} "
+            f"{_pct(summary.btc_return):>11} "
+            f"{_pct(summary.max_drawdown):>9} "
+            f"{summary.liquidity_days:>11} "
+            f"{_pct(summary.liquidity_day_ratio):>13} "
+            f"{stress_mdd:>10} "
+            f"{_pct(summary.average_rolling_volatility):>8} "
+            f"{_pct(summary.average_range_pct):>8} "
+            f"{summary.average_amihud_illiq:>10.6f} "
+            f"{t_bill:>8} "
+            f"{fed_rate:>8} "
+            f"{max_bill:>7}"
+        )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Crypto derivative structuring simulations.")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -301,6 +357,16 @@ def build_parser() -> argparse.ArgumentParser:
     tenors.add_argument("--apr", type=float, default=0.12)
     tenors.add_argument("--tenor-days", nargs="+", type=int, default=[90, 180, 270, 365])
     tenors.set_defaults(func=run_dci_tenors)
+
+    stress = subparsers.add_parser("stress", help="summarize liquidity stress and macro-rate features")
+    stress.add_argument("--symbol", default="BTCUSDT")
+    stress.add_argument("--start-year", type=int, default=2020)
+    stress.add_argument("--end-year", type=int, default=2026)
+    stress.add_argument("--window", type=int, default=30)
+    stress.add_argument("--stress-percentile", type=float, default=90.0)
+    stress.add_argument("--t-bill-series", default="DGS3MO")
+    stress.add_argument("--policy-series", default="FEDFUNDS")
+    stress.set_defaults(func=run_stress)
     return parser
 
 

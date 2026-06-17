@@ -5,6 +5,7 @@ from structuring_lab.backtest import rolling_dci_backtest_by_year
 from structuring_lab.binance import Kline
 from structuring_lab.products import DualCurrencyInvestment
 from structuring_lab.risk import summarize_funding_rates, summarize_values
+from structuring_lab.stress import max_drawdown
 
 
 class DualCurrencyInvestmentTests(unittest.TestCase):
@@ -97,6 +98,9 @@ class DualCurrencyInvestmentTests(unittest.TestCase):
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0].year, 2020)
         self.assertEqual(results[0].observations, 10)
+
+    def test_max_drawdown(self):
+        self.assertAlmostEqual(max_drawdown([100, 120, 90, 96]), -0.25)
 
 
 if __name__ == "__main__":

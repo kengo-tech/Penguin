@@ -57,6 +57,12 @@ python -m structuring_lab.cli dci-tenors --symbol BTCUSDT --start-year 2020 --en
 python -m structuring_lab.cli dci-tenors --symbol BTCUSDT --start-year 2020 --end-year 2026 --side call --strike-moneyness 1.1 --notional 100000 --apr 0.12 --tenor-days 90 180 270 365
 ```
 
+金利と流動性ストレス特徴量の年別検証:
+
+```powershell
+python -m structuring_lab.cli stress --symbol BTCUSDT --start-year 2020 --end-year 2026 --window 30 --stress-percentile 90
+```
+
 ## 商品理解
 
 ### Stablecoin建てDCI
