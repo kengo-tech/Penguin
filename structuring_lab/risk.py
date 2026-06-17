@@ -21,6 +21,19 @@ class RiskSummary:
     expected_benchmark_gap: float | None = None
 
 
+@dataclass(frozen=True)
+class FundingSummary:
+    observations: int
+    mean_rate: float
+    median_rate: float
+    stdev_rate: float
+    positive_probability: float
+    annualized_mean_rate: float
+    cumulative_simple_return: float
+    worst_rate: float
+    best_rate: float
+
+
 def percentile(values: list[float], p: float) -> float:
     if not values:
         raise ValueError("values must not be empty")
@@ -111,3 +124,22 @@ def summarize_values(
         expected_benchmark_gap=expected_benchmark_gap,
     )
 
+
+def summarize_funding_rates(funding_rates: list[float], events_per_day: int = 3) -> FundingSummary:
+    if not funding_rates:
+        raise ValueError("funding_rates must not be empty")
+    if events_per_day <= 0:
+        raise ValueError("events_per_day must be positive")
+
+    rate_stdev = stdev(funding_rates) if len(funding_rates) > 1 else 0.0
+    return FundingSummary(
+        observations=len(funding_rates),
+        mean_rate=mean(funding_rates),
+        median_rate=median(funding_rates),
+        stdev_rate=rate_stdev,
+        positive_probability=sum(rate > 0 for rate in funding_rates) / len(funding_rates),
+        annualized_mean_rate=mean(funding_rates) * events_per_day * 365.0,
+        cumulative_simple_return=sum(funding_rates),
+        worst_rate=min(funding_rates),
+        best_rate=max(funding_rates),
+    )

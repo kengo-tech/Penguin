@@ -1,7 +1,7 @@
 import unittest
 
 from structuring_lab.products import DualCurrencyInvestment
-from structuring_lab.risk import summarize_values
+from structuring_lab.risk import summarize_funding_rates, summarize_values
 
 
 class DualCurrencyInvestmentTests(unittest.TestCase):
@@ -56,7 +56,13 @@ class DualCurrencyInvestmentTests(unittest.TestCase):
         self.assertAlmostEqual(summary.probability_of_loss, 1 / 3)
         self.assertAlmostEqual(summary.expected_value, 100)
 
+    def test_funding_summary_annualizes_event_rates(self):
+        summary = summarize_funding_rates([0.0001, -0.00005, 0.0002], events_per_day=3)
+
+        self.assertEqual(summary.observations, 3)
+        self.assertAlmostEqual(summary.positive_probability, 2 / 3)
+        self.assertAlmostEqual(summary.annualized_mean_rate, 0.00025 / 3 * 3 * 365)
+
 
 if __name__ == "__main__":
     unittest.main()
-

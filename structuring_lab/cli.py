@@ -11,12 +11,13 @@ from structuring_lab.risk import (
     annualized_volatility,
     log_returns,
     simulate_gbm_terminal_prices,
+    summarize_funding_rates,
     summarize_values,
 )
 
 
-def _pct(value: float) -> str:
-    return f"{value * 100:,.2f}%"
+def _pct(value: float, decimals: int = 2) -> str:
+    return f"{value * 100:,.{decimals}f}%"
 
 
 def _money(value: float) -> str:
@@ -123,6 +124,29 @@ def run_dci(args: argparse.Namespace) -> None:
     print(f"Average simulated terminal price: {_money(mean(terminal_prices))}")
 
 
+def run_funding(args: argparse.Namespace) -> None:
+    client = PublicBinanceFuturesClient()
+    rows = client.funding_rates(args.symbol, limit=args.limit)
+    rates = [row.funding_rate for row in rows]
+    summary = summarize_funding_rates(rates)
+
+    print("Crypto Derivatives Structuring Lab")
+    print("----------------------------------")
+    print(f"Data source: Binance USD-M Futures funding rates {args.symbol}")
+    print(f"First funding time: {rows[0].funding_time.isoformat()}")
+    print(f"Last funding time: {rows[-1].funding_time.isoformat()}")
+    print(f"Observations: {summary.observations}")
+    print("")
+    print("Funding summary")
+    print(f"Mean funding rate per event: {_pct(summary.mean_rate, 4)}")
+    print(f"Median funding rate per event: {_pct(summary.median_rate, 4)}")
+    print(f"Std funding rate per event: {_pct(summary.stdev_rate, 4)}")
+    print(f"Positive funding probability: {_pct(summary.positive_probability)}")
+    print(f"Annualized mean funding: {_pct(summary.annualized_mean_rate)}")
+    print(f"Cumulative simple funding over sample: {_pct(summary.cumulative_simple_return)}")
+    print(f"Worst / best event: {_pct(summary.worst_rate, 4)} / {_pct(summary.best_rate, 4)}")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Crypto derivative structuring simulations.")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -144,6 +168,11 @@ def build_parser() -> argparse.ArgumentParser:
     dci.add_argument("--rate", type=float, default=0.0)
     dci.add_argument("--use-historical-drift", action="store_true")
     dci.set_defaults(func=run_dci)
+
+    funding = subparsers.add_parser("funding", help="summarize Binance funding rates")
+    funding.add_argument("--symbol", default="BTCUSDT")
+    funding.add_argument("--limit", type=int, default=1000)
+    funding.set_defaults(func=run_funding)
     return parser
 
 
@@ -155,4 +184,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
