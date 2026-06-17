@@ -1,0 +1,9 @@
+[project]
+name = "crypto-structuring-lab"
+version = "0.1.0"
+description = "Educational crypto derivatives structuring and risk simulation lab."
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
