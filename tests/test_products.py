@@ -5,7 +5,7 @@ from structuring_lab.backtest import rolling_dci_backtest_by_year
 from structuring_lab.binance import Kline
 from structuring_lab.products import DualCurrencyInvestment
 from structuring_lab.risk import summarize_funding_rates, summarize_values
-from structuring_lab.stress import max_drawdown
+from structuring_lab.stress import StressDay, detect_liquidity_drawdown_events, max_drawdown
 
 
 class DualCurrencyInvestmentTests(unittest.TestCase):
@@ -101,6 +101,34 @@ class DualCurrencyInvestmentTests(unittest.TestCase):
 
     def test_max_drawdown(self):
         self.assertAlmostEqual(max_drawdown([100, 120, 90, 96]), -0.25)
+
+    def test_detect_liquidity_drawdown_events(self):
+        start = datetime(2020, 1, 1, tzinfo=timezone.utc)
+        days = []
+        for index, close in enumerate([100, 95, 90, 91]):
+            day = start + timedelta(days=index)
+            days.append(
+                StressDay(
+                    date=day.date(),
+                    close=close,
+                    quote_volume=1,
+                    daily_return=0,
+                    range_pct=0.1,
+                    rolling_volatility=0.5,
+                    rolling_drawdown=-0.1,
+                    amihud_illiq=0.1,
+                    t_bill_3m=0.01,
+                    fed_funds=0.01,
+                    stress_score=2.0,
+                    liquidity_constrained=index in {1, 2},
+                )
+            )
+
+        events = detect_liquidity_drawdown_events(days, min_drawdown=-0.05)
+
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].stress_days, 2)
+        self.assertAlmostEqual(events[0].max_drawdown, -0.052631578947368474)
 
 
 if __name__ == "__main__":

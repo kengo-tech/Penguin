@@ -17,7 +17,7 @@ from structuring_lab.risk import (
     summarize_funding_rates,
     summarize_values,
 )
-from structuring_lab.stress import build_stress_days, summarize_stress_by_year
+from structuring_lab.stress import build_stress_days, detect_liquidity_drawdown_events, summarize_stress_by_year
 
 
 def _pct(value: float, decimals: int = 2) -> str:
@@ -309,6 +309,67 @@ def run_stress(args: argparse.Namespace) -> None:
         )
 
 
+def _build_stress_days_from_args(args: argparse.Namespace):
+    client = PublicBinanceFuturesClient()
+    rows = client.klines_range(
+        args.symbol,
+        start=_utc_date(args.start_year),
+        end=_utc_date(args.end_year + 1),
+        interval="1d",
+    )
+    t_bill = fetch_fred_series(args.t_bill_series)
+    fed_funds = fetch_fred_series(args.policy_series)
+    return build_stress_days(
+        rows,
+        t_bill_3m=t_bill,
+        fed_funds=fed_funds,
+        rolling_window=args.window,
+        stress_percentile=args.stress_percentile,
+    )
+
+
+def run_stress_events(args: argparse.Namespace) -> None:
+    days = _build_stress_days_from_args(args)
+    events = detect_liquidity_drawdown_events(
+        days,
+        max_gap_days=args.max_gap_days,
+        min_stress_days=args.min_stress_days,
+        min_drawdown=args.min_drawdown,
+    )[: args.top]
+
+    print("Crypto Derivatives Structuring Lab")
+    print("----------------------------------")
+    print(f"Data source: Binance USD-M Futures daily klines {args.symbol}")
+    print(f"Macro source: FRED {args.t_bill_series}, {args.policy_series}")
+    print(f"Stress threshold: top {100 - args.stress_percentile:.0f}% stress-score days")
+    print(f"Event grouping: max gap {args.max_gap_days} days, min stress days {args.min_stress_days}")
+    print("")
+    header = (
+        "Rank  Start       End         Days  Stress  Return    MDD       "
+        "Peak score  Vol      Range    Illiq      3M Bill  FedFunds"
+    )
+    print(header)
+    print("-" * len(header))
+    for rank, event in enumerate(events, start=1):
+        t_bill = "n/a" if event.average_t_bill_3m is None else _pct(event.average_t_bill_3m)
+        fed_rate = "n/a" if event.average_fed_funds is None else _pct(event.average_fed_funds)
+        print(
+            f"{rank:>4} "
+            f"{event.start_date.isoformat()} "
+            f"{event.end_date.isoformat()} "
+            f"{event.calendar_days:>4} "
+            f"{event.stress_days:>7} "
+            f"{_pct(event.event_return):>8} "
+            f"{_pct(event.max_drawdown):>9} "
+            f"{event.peak_stress_score:>10.2f} "
+            f"{_pct(event.average_rolling_volatility):>8} "
+            f"{_pct(event.average_range_pct):>8} "
+            f"{event.average_amihud_illiq:>10.6f} "
+            f"{t_bill:>8} "
+            f"{fed_rate:>8}"
+        )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Crypto derivative structuring simulations.")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -367,6 +428,20 @@ def build_parser() -> argparse.ArgumentParser:
     stress.add_argument("--t-bill-series", default="DGS3MO")
     stress.add_argument("--policy-series", default="FEDFUNDS")
     stress.set_defaults(func=run_stress)
+
+    stress_events = subparsers.add_parser("stress-events", help="list liquidity-stress drawdown episodes")
+    stress_events.add_argument("--symbol", default="BTCUSDT")
+    stress_events.add_argument("--start-year", type=int, default=2020)
+    stress_events.add_argument("--end-year", type=int, default=2026)
+    stress_events.add_argument("--window", type=int, default=30)
+    stress_events.add_argument("--stress-percentile", type=float, default=90.0)
+    stress_events.add_argument("--t-bill-series", default="DGS3MO")
+    stress_events.add_argument("--policy-series", default="FEDFUNDS")
+    stress_events.add_argument("--max-gap-days", type=int, default=7)
+    stress_events.add_argument("--min-stress-days", type=int, default=2)
+    stress_events.add_argument("--min-drawdown", type=float, default=-0.10)
+    stress_events.add_argument("--top", type=int, default=10)
+    stress_events.set_defaults(func=run_stress_events)
     return parser
 
 

@@ -44,6 +44,26 @@ class StressYearSummary:
     max_t_bill_3m: float | None
 
 
+@dataclass(frozen=True)
+class StressEvent:
+    start_date: date
+    end_date: date
+    calendar_days: int
+    stress_days: int
+    start_close: float
+    end_close: float
+    event_return: float
+    max_drawdown: float
+    average_stress_score: float
+    peak_stress_score: float
+    average_rolling_volatility: float
+    average_range_pct: float
+    average_amihud_illiq: float
+    average_quote_volume: float
+    average_t_bill_3m: float | None
+    average_fed_funds: float | None
+
+
 def max_drawdown(prices: list[float]) -> float:
     if not prices:
         raise ValueError("prices must not be empty")
@@ -179,3 +199,74 @@ def summarize_stress_by_year(days: list[StressDay], start_year: int, end_year: i
         )
     return summaries
 
+
+def detect_liquidity_drawdown_events(
+    days: list[StressDay],
+    max_gap_days: int = 7,
+    min_stress_days: int = 2,
+    min_drawdown: float = -0.10,
+) -> list[StressEvent]:
+    """Group nearby liquidity-stress days and keep periods with meaningful drawdown."""
+
+    if max_gap_days < 0:
+        raise ValueError("max_gap_days must be non-negative")
+    if min_stress_days <= 0:
+        raise ValueError("min_stress_days must be positive")
+
+    ordered = sorted(days, key=lambda day: day.date)
+    index_by_date = {day.date: index for index, day in enumerate(ordered)}
+    stress_days = [day for day in ordered if day.liquidity_constrained]
+    if not stress_days:
+        return []
+
+    clusters: list[list[StressDay]] = []
+    current = [stress_days[0]]
+    for day in stress_days[1:]:
+        gap = (day.date - current[-1].date).days
+        if gap <= max_gap_days:
+            current.append(day)
+        else:
+            clusters.append(current)
+            current = [day]
+    clusters.append(current)
+
+    events: list[StressEvent] = []
+    for cluster in clusters:
+        if len(cluster) < min_stress_days:
+            continue
+
+        start_index = index_by_date[cluster[0].date]
+        end_index = index_by_date[cluster[-1].date]
+        event_days = ordered[start_index : end_index + 1]
+        event_mdd = max_drawdown([day.close for day in event_days])
+        event_return = event_days[-1].close / event_days[0].close - 1.0
+        if event_mdd > min_drawdown and event_return >= 0:
+            continue
+
+        scores = [day.stress_score for day in event_days if day.stress_score is not None]
+        vols = [day.rolling_volatility for day in event_days if day.rolling_volatility is not None]
+        t_bills = [day.t_bill_3m for day in event_days if day.t_bill_3m is not None]
+        fed_rates = [day.fed_funds for day in event_days if day.fed_funds is not None]
+
+        events.append(
+            StressEvent(
+                start_date=event_days[0].date,
+                end_date=event_days[-1].date,
+                calendar_days=(event_days[-1].date - event_days[0].date).days + 1,
+                stress_days=len(cluster),
+                start_close=event_days[0].close,
+                end_close=event_days[-1].close,
+                event_return=event_return,
+                max_drawdown=event_mdd,
+                average_stress_score=mean(scores) if scores else 0.0,
+                peak_stress_score=max(scores) if scores else 0.0,
+                average_rolling_volatility=mean(vols) if vols else 0.0,
+                average_range_pct=mean(day.range_pct for day in event_days),
+                average_amihud_illiq=mean(day.amihud_illiq for day in event_days),
+                average_quote_volume=mean(day.quote_volume for day in event_days),
+                average_t_bill_3m=mean(t_bills) if t_bills else None,
+                average_fed_funds=mean(fed_rates) if fed_rates else None,
+            )
+        )
+
+    return sorted(events, key=lambda event: event.max_drawdown)

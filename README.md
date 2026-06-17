@@ -63,6 +63,12 @@ python -m structuring_lab.cli dci-tenors --symbol BTCUSDT --start-year 2020 --en
 python -m structuring_lab.cli stress --symbol BTCUSDT --start-year 2020 --end-year 2026 --window 30 --stress-percentile 90
 ```
 
+流動性ストレスを伴う下落イベントの抽出:
+
+```powershell
+python -m structuring_lab.cli stress-events --symbol BTCUSDT --start-year 2020 --end-year 2026 --window 30 --stress-percentile 90 --max-gap-days 7 --min-stress-days 2 --min-drawdown -0.10 --top 12
+```
+
 ## 商品理解
 
 ### Stablecoin建てDCI
