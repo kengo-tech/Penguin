@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timezone
 from statistics import mean
 
+from structuring_lab.backtest import rolling_dci_backtest_by_year
 from structuring_lab.binance import PublicBinanceFuturesClient
 from structuring_lab.pricing import black_scholes_price, fair_apr_from_option_premium
 from structuring_lab.products import DualCurrencyInvestment
@@ -22,6 +24,10 @@ def _pct(value: float, decimals: int = 2) -> str:
 
 def _money(value: float) -> str:
     return f"{value:,.2f}"
+
+
+def _utc_date(year: int, month: int = 1, day: int = 1) -> datetime:
+    return datetime(year, month, day, tzinfo=timezone.utc)
 
 
 def _offline_prices(spot: float) -> list[float]:
@@ -147,6 +153,56 @@ def run_funding(args: argparse.Namespace) -> None:
     print(f"Worst / best event: {_pct(summary.worst_rate, 4)} / {_pct(summary.best_rate, 4)}")
 
 
+def run_dci_years(args: argparse.Namespace) -> None:
+    client = PublicBinanceFuturesClient()
+    fetch_start = _utc_date(args.start_year)
+    fetch_end_year = args.end_year + 1
+    fetch_end = _utc_date(fetch_end_year)
+    rows = client.klines_range(args.symbol, start=fetch_start, end=fetch_end, interval="1d")
+    results = rolling_dci_backtest_by_year(
+        rows,
+        start_year=args.start_year,
+        end_year=args.end_year,
+        side=args.side,
+        strike_moneyness=args.strike_moneyness,
+        notional=args.notional,
+        apr=args.apr,
+        tenor_days=args.tenor_days,
+    )
+
+    print("Crypto Derivatives Structuring Lab")
+    print("----------------------------------")
+    print(f"Data source: Binance USD-M Futures daily klines {args.symbol}")
+    print(f"Backtest: rolling {args.tenor_days}-day DCI by entry year")
+    print(f"Side: {args.side}")
+    print(f"Strike moneyness: {_pct(args.strike_moneyness - 1.0)} vs spot")
+    print(f"Client APR: {_pct(args.apr)}")
+    print(f"Notional quote: {_money(args.notional)}")
+    print("")
+    header = (
+        "Year  Obs  Entry start  Entry last  BTC return  Vol      "
+        "DCI return  Loss prob  Conv prob  VaR95 loss  CVaR95 loss  Bench gap"
+    )
+    print(header)
+    print("-" * len(header))
+    for result in results:
+        summary = result.summary
+        print(
+            f"{result.year:<5} "
+            f"{result.observations:>3} "
+            f"{_money(result.start_spot):>11} "
+            f"{_money(result.end_spot):>10} "
+            f"{_pct(result.buy_and_hold_return):>11} "
+            f"{_pct(result.historical_volatility):>8} "
+            f"{_pct(summary.expected_return):>11} "
+            f"{_pct(summary.probability_of_loss):>10} "
+            f"{_pct(summary.conversion_probability or 0.0):>10} "
+            f"{_money(summary.var_95):>11} "
+            f"{_money(summary.cvar_95):>12} "
+            f"{_money(summary.expected_benchmark_gap or 0.0):>10}"
+        )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Crypto derivative structuring simulations.")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -173,6 +229,17 @@ def build_parser() -> argparse.ArgumentParser:
     funding.add_argument("--symbol", default="BTCUSDT")
     funding.add_argument("--limit", type=int, default=1000)
     funding.set_defaults(func=run_funding)
+
+    years = subparsers.add_parser("dci-years", help="realized rolling DCI backtest by calendar year")
+    years.add_argument("--symbol", default="BTCUSDT")
+    years.add_argument("--start-year", type=int, default=2020)
+    years.add_argument("--end-year", type=int, default=2026)
+    years.add_argument("--side", choices=["put", "call"], default="put")
+    years.add_argument("--strike-moneyness", type=float, default=0.9)
+    years.add_argument("--notional", type=float, default=100000.0)
+    years.add_argument("--apr", type=float, default=0.12)
+    years.add_argument("--tenor-days", type=int, default=30)
+    years.set_defaults(func=run_dci_years)
     return parser
 
 

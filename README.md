@@ -43,6 +43,13 @@ Binanceの公開データを使う例:
 python -m structuring_lab.cli dci --symbol BTCUSDT --lookback 365 --side put --strike-moneyness 0.9 --notional 100000 --apr 0.12 --tenor-days 30
 ```
 
+2020年から2026年までの年別ローリング検証:
+
+```powershell
+python -m structuring_lab.cli dci-years --symbol BTCUSDT --start-year 2020 --end-year 2026 --side put --strike-moneyness 0.9 --notional 100000 --apr 0.12 --tenor-days 30
+python -m structuring_lab.cli dci-years --symbol BTCUSDT --start-year 2020 --end-year 2026 --side call --strike-moneyness 1.1 --notional 100000 --apr 0.12 --tenor-days 30
+```
+
 ## 商品理解
 
 ### Stablecoin建てDCI
@@ -75,4 +82,3 @@ python -m structuring_lab.cli dci --symbol BTCUSDT --lookback 365 --side put --s
 ## 注意
 
 これは教育・面接準備・商品理解用のコードです。投資助言、勧誘、実運用、顧客向け資料としてそのまま使用するものではありません。
-

@@ -36,6 +36,12 @@ def _dt_from_ms(value: int) -> datetime:
     return datetime.fromtimestamp(value / 1000, tz=timezone.utc)
 
 
+def datetime_to_ms(value: datetime) -> int:
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return int(value.timestamp() * 1000)
+
+
 class PublicBinanceFuturesClient:
     """Small client for Binance USD-M Futures public market data."""
 
@@ -89,6 +95,42 @@ class PublicBinanceFuturesClient:
             for row in raw_rows
         ]
 
+    def klines_range(
+        self,
+        symbol: str,
+        start: datetime,
+        end: datetime,
+        interval: str = "1d",
+        limit: int = 1500,
+    ) -> list[Kline]:
+        """Fetch klines across an inclusive start and exclusive end range."""
+
+        start_ms = datetime_to_ms(start)
+        end_ms = datetime_to_ms(end) - 1
+        rows: list[Kline] = []
+        seen_open_times: set[datetime] = set()
+
+        while start_ms <= end_ms:
+            batch = self.klines(
+                symbol=symbol,
+                interval=interval,
+                limit=limit,
+                start_time_ms=start_ms,
+                end_time_ms=end_ms,
+            )
+            if not batch:
+                break
+            for row in batch:
+                if row.open_time not in seen_open_times:
+                    rows.append(row)
+                    seen_open_times.add(row.open_time)
+            next_start_ms = datetime_to_ms(batch[-1].close_time) + 1
+            if next_start_ms <= start_ms:
+                break
+            start_ms = next_start_ms
+
+        return rows
+
     def funding_rates(
         self,
         symbol: str,
@@ -112,4 +154,3 @@ class PublicBinanceFuturesClient:
             )
             for row in raw_rows
         ]
-
