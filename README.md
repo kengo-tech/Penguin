@@ -50,6 +50,13 @@ python -m structuring_lab.cli dci-years --symbol BTCUSDT --start-year 2020 --end
 python -m structuring_lab.cli dci-years --symbol BTCUSDT --start-year 2020 --end-year 2026 --side call --strike-moneyness 1.1 --notional 100000 --apr 0.12 --tenor-days 30
 ```
 
+3/6/9/12か月の保有期間比較:
+
+```powershell
+python -m structuring_lab.cli dci-tenors --symbol BTCUSDT --start-year 2020 --end-year 2026 --side put --strike-moneyness 0.9 --notional 100000 --apr 0.12 --tenor-days 90 180 270 365
+python -m structuring_lab.cli dci-tenors --symbol BTCUSDT --start-year 2020 --end-year 2026 --side call --strike-moneyness 1.1 --notional 100000 --apr 0.12 --tenor-days 90 180 270 365
+```
+
 ## 商品理解
 
 ### Stablecoin建てDCI
